@@ -8,33 +8,48 @@ import Alamofire
 import Combine
 import Foundation
 
-public protocol NetworkService {
-    typealias Success = NetworkServiceTask.Response?
-    typealias Failure = NetworkError
-    
-    typealias NetworkServiceResultBlock = (Result<Success, Failure>) -> ()
-    
+public protocol NetworkServiceable {
     @available(iOS 13.0, *)
-    typealias NetworkServicePublisher = AnyPublisher<NetworkServiceTask.Response, Failure>
+    func perform<T: NetworkTask>(task: T) -> AnyPublisher<T.Response, NetworkError>
     
-    associatedtype NetworkServiceTask: NetworkTask
-    
-    init(task: NetworkServiceTask)
-    func perform(task: NetworkServiceTask, completion: @escaping NetworkServiceResultBlock)
+    func perform<T: NetworkTask>(task: T, completion: @escaping (Result<T.Response?, NetworkError>) -> ())
 }
 
-extension NetworkService {
+public struct NetworkService: NetworkServiceable {
+
+    public static let shared: NetworkService = NetworkService()
     
-    private var session: Session {
-        AF
-    }
+    public init() {}
+    
+    private var session = Session.default
+    private var reachablity = NetworkReachabilityManager.default
     
     private var isReachable: Bool {
-        guard let reachabilityManager = NetworkReachabilityManager() else { return false }
-        return reachabilityManager.isReachable
+        reachablity?.isReachable ?? false
     }
     
-    public func perform(task: NetworkServiceTask, completion: @escaping NetworkServiceResultBlock) {
+    @available(iOS 13.0, *)
+    public func perform<T>(task: T) -> AnyPublisher<T.Response, NetworkError> where T : NetworkTask {
+        guard isReachable else {
+            return Fail(error: NetworkError.reachability).eraseToAnyPublisher()
+        }
+        
+        guard let url = task.url else {
+            return Fail(error: NetworkError.url).eraseToAnyPublisher()
+        }
+        
+        return session.request(url,
+                               method: HTTPMethod(rawValue: task.method.rawValue),
+                               parameters: task.request,
+                               headers: HTTPHeaders(task.headers ?? [:]))
+        .validate()
+        .publishDecodable(type: T.Response.self)
+        .value()
+        .mapError { NetworkError.alamofire(wrapped: $0) }
+        .eraseToAnyPublisher()
+    }
+    
+    public func perform<T>(task: T, completion: @escaping (Result<T.Response?, NetworkError>) -> ()) where T : NetworkTask {
         guard isReachable else {
             completion(.failure(.reachability))
             return
@@ -50,7 +65,7 @@ extension NetworkService {
                         parameters: task.request,
                         headers: HTTPHeaders(task.headers ?? [:]))
         .validate()
-        .responseDecodable(of: NetworkServiceTask.Response.self) { result in
+        .responseDecodable(of: T.Response.self) { result in
             guard result.response != nil else {
                 completion(.failure(.responseError))
                 return
@@ -58,26 +73,5 @@ extension NetworkService {
 
             completion(.success(result.value))
         }
-    }
-    
-    @available(iOS 13.0, *)
-    public func perform(task: NetworkServiceTask) -> NetworkServicePublisher {
-        guard isReachable else {
-            return Fail(error: NetworkError.reachability).eraseToAnyPublisher()
-        }
-        
-        guard let url = task.url else {
-            return Fail(error: NetworkError.url).eraseToAnyPublisher()
-        }
-        
-        return session.request(url,
-                               method: HTTPMethod(rawValue: task.method.rawValue),
-                               parameters: task.request,
-                               headers: HTTPHeaders(task.headers ?? [:]))
-        .validate()
-        .publishDecodable(type: NetworkServiceTask.Response.self)
-        .value()
-        .mapError { NetworkError.alamofire(wrapped: $0) }
-        .eraseToAnyPublisher()
     }
 }
