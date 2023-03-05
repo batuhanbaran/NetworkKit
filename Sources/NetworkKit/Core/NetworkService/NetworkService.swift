@@ -8,14 +8,14 @@ import Alamofire
 import Combine
 import Foundation
 
-public protocol NetworkServiceable {
+public protocol NetworkServicing {
     @available(iOS 13.0, *)
     func perform<T: NetworkTask>(task: T) -> AnyPublisher<T.Response, NetworkError>
     
     func perform<T: NetworkTask>(task: T, completion: @escaping (Result<T.Response?, NetworkError>) -> ())
 }
 
-public struct NetworkService: NetworkServiceable {
+public struct NetworkService: NetworkServicing {
 
     public static let shared: NetworkService = NetworkService()
     
