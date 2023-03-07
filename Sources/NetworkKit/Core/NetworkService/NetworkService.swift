@@ -8,7 +8,7 @@ import Alamofire
 import Combine
 import Foundation
 
-public protocol NetworkServiceable {
+public protocol NetworkServiceProtocol {
     @available(iOS 13.0, *)
     func perform<T: NetworkTask>(task: T) -> AnyPublisher<T.Response, NetworkError>
     
