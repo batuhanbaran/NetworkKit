@@ -15,13 +15,19 @@ public protocol NetworkServiceable {
     func perform<T: NetworkTask>(task: T, completion: @escaping (Result<T.Response?, NetworkError>) -> ())
 }
 
-public struct NetworkService: NetworkServiceable {
-
+public final class NetworkService: NetworkServiceProtocol {
+    
     public static let shared: NetworkService = NetworkService()
     
     public init() {}
     
-    private var session = Session.default
+    private let session: Session = {
+        let manager = ServerTrustManager(evaluators: ["newsapi.org": DisabledTrustEvaluator()])
+        let configuration = URLSessionConfiguration.af.default
+        let session = Session(configuration: configuration, serverTrustManager: manager)
+        return session
+    }()
+    
     private var reachablity = NetworkReachabilityManager.default
     
     private var isReachable: Bool {
@@ -66,12 +72,12 @@ public struct NetworkService: NetworkServiceable {
                         headers: HTTPHeaders(task.headers ?? [:]))
         .validate()
         .responseDecodable(of: T.Response.self) { result in
-            guard result.response != nil else {
-                completion(.failure(.responseError))
-                return
+            switch result.result {
+            case .success(let response):
+                completion(.success(response))
+            case .failure(let error):
+                completion(.failure(NetworkError.alamofire(wrapped: error)))
             }
-
-            completion(.success(result.value))
         }
     }
 }
