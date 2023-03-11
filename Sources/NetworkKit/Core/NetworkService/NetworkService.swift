@@ -17,9 +17,8 @@ public protocol NetworkServiceProtocol {
 
 public final class NetworkService: NetworkServiceProtocol {
     
-    public static let shared: NetworkService = NetworkService()
-    
-    public init() {}
+    // MARK: - Private properties
+    private var reachablity = NetworkReachabilityManager.default
     
     private let session: Session = {
         let manager = ServerTrustManager(evaluators: ["newsapi.org": DisabledTrustEvaluator()])
@@ -28,12 +27,17 @@ public final class NetworkService: NetworkServiceProtocol {
         return session
     }()
     
-    private var reachablity = NetworkReachabilityManager.default
-    
     private var isReachable: Bool {
         reachablity?.isReachable ?? false
     }
     
+    // MARK: - Public properties
+    public static let shared: NetworkService = NetworkService()
+    
+    // MARK: - Initializer
+    public init() {}
+    
+    // MARK: - Methods
     @available(iOS 13.0, *)
     public func perform<T>(task: T) -> AnyPublisher<T.Response, NetworkError> where T : NetworkTask {
         guard isReachable else {
