@@ -10,15 +10,11 @@ let package = Package(
             name: "NetworkKit",
             targets: ["NetworkKit"]),
     ],
-    dependencies: [
-        .package(url: "https://github.com/Alamofire/Alamofire.git", .upToNextMajor(from: "5.6.1"))
-    ],
+    dependencies: [],
     targets: [
         .target(
             name: "NetworkKit",
-            dependencies: [
-                "Alamofire"
-            ]
+            dependencies: []
         ),
     ]
 )

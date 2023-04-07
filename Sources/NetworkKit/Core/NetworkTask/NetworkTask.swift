@@ -17,3 +17,14 @@ public protocol NetworkTask {
     var headers: HTTPHeaders? { get set }
     var request: Request { get set }
 }
+
+extension NetworkTask {
+    
+    func makeURLRequest() throws -> URLRequest {
+        guard let url = url else {
+            throw NetworkError.url
+        }
+        
+        return URLRequest(url: url)
+    }
+}

@@ -4,14 +4,15 @@
 //  Created by Batuhan Baran on 10.02.2023.
 //
 
-import Alamofire
 import Foundation
 
 public enum NetworkError: Error {
     case reachability
     case url
     case responseError
-    case alamofire(wrapped: AFError)
+    case urlRequest
+    case data
+    case decoding
     
     var reason: String {
         switch self {
@@ -21,8 +22,12 @@ public enum NetworkError: Error {
             return "URL is nil."
         case .responseError:
             return "Response is nil."
-        case .alamofire(let wrapped):
-            return wrapped.localizedDescription
+        case .urlRequest:
+            return "URLRequest cannot build."
+        case .data:
+            return "Data is nil."
+        case .decoding:
+            return "Decoding error."
         }
     }
 }
