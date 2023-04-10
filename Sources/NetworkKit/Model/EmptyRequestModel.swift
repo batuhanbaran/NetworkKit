@@ -7,4 +7,7 @@
 
 import Foundation
 
-struct EmptyRequestModel: Codable { }
+public struct EmptyRequestModel: Codable {
+    
+    public init() { }
+}
