@@ -9,29 +9,19 @@ import Foundation
 
 final class DataEncoder: JSONEncoder {
     
-    private var request: Codable
+    private var requestBody: Codable
     
-    init(request: Codable) {
-        self.request = request
+    init(
+        requestBody: Codable
+    ) {
+        self.requestBody = requestBody
         
         super.init()
     }
     
-    func encodeAsDictionary() throws -> [String: Any] {
-        try request.asDictionary()
-    }
-    
-    func encode() throws -> Data {
-        try super.encode(request.self)
-    }
-}
-
-fileprivate extension Encodable {
-    func asDictionary() throws -> [String: Any] {
-        let data = try JSONEncoder().encode(self)
-        guard let dictionary = try JSONSerialization.jsonObject(with: data, options: .allowFragments) as? [String: Any] else {
-            throw NSError()
-        }
-        return dictionary
+    func encode() throws -> Data? {
+        guard !(requestBody is EmptyRequestModel) else { return nil }
+        
+        return try super.encode(requestBody.self)
     }
 }

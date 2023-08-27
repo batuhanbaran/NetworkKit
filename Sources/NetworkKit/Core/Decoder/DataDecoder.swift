@@ -19,12 +19,15 @@ final class DataDecoder<T: NetworkTask>: JSONDecoder {
         super.init()
     }
     
-    func decode(by status: HTTPStatusCode) throws -> Decodable {
+    func decode(
+        by status: HTTPStatusCode
+    ) throws -> Decodable {
         switch status {
         case .ok:
-            return try super.decode(T.Response.self, from: data)
+            return try super.decode(T.ResponseModel.self, from: data)
         case .serverError:
-            return try super.decode(T.ServerError.self, from: data)
+            let json = try super.decode(T.ServerErrorModel.self, from: data)
+            throw NetworkError.serviceError(model: json)
         case .unknown:
             throw NetworkError.decoding
         }

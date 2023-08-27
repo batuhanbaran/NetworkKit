@@ -8,6 +8,5 @@
 import Foundation
 
 public struct EmptyRequestModel: Codable {
-    
     public init() { }
 }

@@ -7,7 +7,7 @@
 import Foundation
 
 public protocol NetworkServiceProtocol {
-    func perform<T: NetworkTask>(task: T, completion: @escaping (Result<T.Response?, NetworkError>) -> ())
+    func perform<T: NetworkTask>(task: T, completion: @escaping (Result<T.ResponseModel?, NetworkError>) -> ())
 }
 
 public final class NetworkService: NetworkServiceProtocol {
@@ -25,7 +25,10 @@ public final class NetworkService: NetworkServiceProtocol {
     public init() {}
     
     // MARK: - Methods
-    public func perform<T>(task: T, completion: @escaping (Result<T.Response?, NetworkError>) -> ()) where T : NetworkTask {
+    public func perform<T>(
+        task: T,
+        completion: @escaping (Result<T.ResponseModel?, NetworkError>) -> ()
+    ) where T : NetworkTask {
         do {
             
             let urlRequest = try task.urlRequest()
@@ -40,9 +43,11 @@ public final class NetworkService: NetworkServiceProtocol {
 
 fileprivate extension NetworkService {
     
-    private func resume<T>(task: T,
-                           for urlRequest: URLRequest,
-                           completion: @escaping (Result<T.Response?, NetworkError>) -> ()) where T : NetworkTask {
+    private func resume<T>(
+        task: T,
+        for urlRequest: URLRequest,
+        completion: @escaping (Result<T.ResponseModel?, NetworkError>) -> ()
+    ) where T : NetworkTask {
         session.dataTask(with: urlRequest) { data, urlResponse, error in
             guard error == nil else {
                 completion(.failure(.urlSession(localizedDescription: error?.localizedDescription ?? "")))
@@ -64,11 +69,12 @@ fileprivate extension NetworkService {
         }.resume()
     }
     
-    private func handle<T>(task: T,
-                           for urlResponse: HTTPURLResponse,
-                           with data: Data,
-                           completion: @escaping (Result<T.Response?, NetworkError>) -> ()) where T : NetworkTask {
-        
+    private func handle<T>(
+        task: T,
+        for urlResponse: HTTPURLResponse,
+        with data: Data,
+        completion: @escaping (Result<T.ResponseModel?, NetworkError>) -> ()
+    ) where T : NetworkTask {
         let statusCode = HTTPStatusCode(urlResponse.statusCode)
         
         switch statusCode {
@@ -80,16 +86,18 @@ fileprivate extension NetworkService {
         }
     }
     
-    private func decodeData<T>(task: T,
-                               by statusCode: HTTPStatusCode,
-                               with data: Data,
-                               completion: @escaping (Result<T.Response?, NetworkError>) -> ()) where T : NetworkTask {
+    private func decodeData<T>(
+        task: T,
+        by statusCode: HTTPStatusCode,
+        with data: Data,
+        completion: @escaping (Result<T.ResponseModel?, NetworkError>) -> ()
+    ) where T : NetworkTask {
         let jsonDecoder = DataDecoder(task: task, with: data)
         
         do {
             
             let json = try jsonDecoder.decode(by: statusCode)
-            completion(.success(json as? T.Response))
+            completion(.success(json as? T.ResponseModel))
             
         } catch {
             completion(.failure(.decoding))
