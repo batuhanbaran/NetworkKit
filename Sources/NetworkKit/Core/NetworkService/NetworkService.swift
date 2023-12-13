@@ -5,15 +5,25 @@
 //
 
 import Foundation
+import Combine
 
 public protocol NetworkServiceProtocol {
-    func perform<T: NetworkTask>(task: T, completion: @escaping (Result<T.ResponseModel?, NetworkError>) -> ())
+    func perform<T: NetworkTask>(
+        _ task: T,
+        completionHandler: @escaping (Result<Codable, NetworkError>) -> ()
+    )
+    
+    @available(iOS 15.0, *)
+    func perform<T: NetworkTask>(_ task: T) async throws -> Codable
+    
+    @available(iOS 13.0, *)
+    func perform<T: NetworkTask>(_ task: T) -> AnyPublisher<Codable, NetworkError>
 }
 
 public final class NetworkService: NetworkServiceProtocol {
     
     // MARK: - Private properties
-    private let session: URLSession = {
+    private var session: URLSession = {
         let session = URLSession(configuration: .default)
         return session
     }()
@@ -26,81 +36,136 @@ public final class NetworkService: NetworkServiceProtocol {
     
     // MARK: - Methods
     public func perform<T>(
-        task: T,
-        completion: @escaping (Result<T.ResponseModel?, NetworkError>) -> ()
+        _ task: T,
+        completionHandler: @escaping (Result<Codable, NetworkError>) -> ()
     ) where T : NetworkTask {
         do {
             
             let urlRequest = try task.urlRequest()
-            resume(task: task, for: urlRequest, completion: completion)
+            resume(task, for: urlRequest, completionHandler: completionHandler)
             
         } catch {
-            completion(.failure(.urlRequest))
+            completionHandler(.failure(.urlRequest))
+        }
+    }
+    
+    @available(iOS 15.0, *)
+    public func perform<T>(_ task: T) async throws -> Codable where T : NetworkTask {
+        do {
+            
+            let urlRequest = try task.urlRequest()
+            let (data, urlResponse) = try await session.data(for: urlRequest)
+            
+            return try await handle(task, for: urlResponse, with: data)
+            
+        } catch {
+            throw NetworkError.urlRequest
+        }
+    }
+    
+    @available(iOS 13.0, *)
+    public func perform<T>(_ task: T) -> AnyPublisher<Codable, NetworkError> where T : NetworkTask {
+        do {
+            
+            let urlRequest = try task.urlRequest()
+            return session.dataTaskPublisher(for: urlRequest)
+                   .tryMap { data, urlResponse in
+                       guard let httpUrlResponse = urlResponse as? HTTPURLResponse else {
+                           throw NetworkError.urlResponse
+                       }
+                       
+                       let hTTPStatusCode = HTTPStatusCode(httpUrlResponse.statusCode)
+                       return try DataDecoder(task: task, with: data).decode(by: hTTPStatusCode)
+                       
+                   }.mapError { error in
+                       return NetworkError.custom(localizedDescription: error.localizedDescription)
+                   }
+                   .eraseToAnyPublisher()
+            
+        } catch {
+            return Fail(error: NetworkError.urlRequest).eraseToAnyPublisher()
+        }
+    }
+}
+
+extension NetworkService {
+    
+    private func resume<T>(
+        _ task: T,
+        for urlRequest: URLRequest,
+        completionHandler: @escaping (Result<Codable, NetworkError>) -> ()
+    ) where T : NetworkTask {
+        session.dataTask(with: urlRequest) { data, urlResponse, error in
+            self.handle(task, for: urlResponse, with: data, completionHandler: completionHandler)
+        }.resume()
+    }
+    
+    private func handle<T>(
+        _ task: T,
+        for urlResponse: URLResponse?,
+        with data: Data?,
+        completionHandler: @escaping (Result<Codable, NetworkError>) -> ()
+    ) where T : NetworkTask {
+        guard let data else {
+            completionHandler(.failure(.data))
+            return
+        }
+        
+        guard let httpUrlResponse = urlResponse as? HTTPURLResponse else {
+            completionHandler(.failure(.urlResponse))
+            return
+        }
+        
+        self.decode(task, for: httpUrlResponse, with: data, completionHandler: completionHandler)
+    }
+    
+    private func decode<T>(
+        _ task: T,
+        for httpUrlResponse: HTTPURLResponse,
+        with data: Data,
+        completionHandler: @escaping (Result<Codable, NetworkError>) -> ()
+    ) where T : NetworkTask {
+        let jsonDecoder = DataDecoder(task: task, with: data)
+        let hTTPStatusCode = HTTPStatusCode(httpUrlResponse.statusCode)
+        
+        do {
+            let json = try jsonDecoder.decode(by: hTTPStatusCode)
+            completionHandler(.success(json))
+            
+        } catch {
+            completionHandler(.failure(.decoding))
         }
     }
     
 }
 
-fileprivate extension NetworkService {
-    
-    private func resume<T>(
-        task: T,
-        for urlRequest: URLRequest,
-        completion: @escaping (Result<T.ResponseModel?, NetworkError>) -> ()
-    ) where T : NetworkTask {
-        session.dataTask(with: urlRequest) { data, urlResponse, error in
-            guard error == nil else {
-                completion(.failure(.urlSession(localizedDescription: error?.localizedDescription ?? "")))
-                return
-            }
-            
-            guard let hTTPURLResponse = urlResponse as? HTTPURLResponse else {
-                completion(.failure(.responseError))
-                return
-            }
-            
-            guard let data = data else {
-                completion(.failure(.data))
-                return
-            }
-            
-            self.handle(task: task, for: hTTPURLResponse, with: data, completion: completion)
-            
-        }.resume()
-    }
+extension NetworkService {
     
     private func handle<T>(
-        task: T,
-        for urlResponse: HTTPURLResponse,
-        with data: Data,
-        completion: @escaping (Result<T.ResponseModel?, NetworkError>) -> ()
-    ) where T : NetworkTask {
-        let statusCode = HTTPStatusCode(urlResponse.statusCode)
-        
-        switch statusCode {
-        case .ok, .serverError:
-            self.decodeData(task: task, by: statusCode, with: data, completion: completion)
-            
-        case .unknown:
-            completion(.failure(.unknown))
+        _ task: T,
+        for urlResponse: URLResponse,
+        with data: Data
+    ) async throws -> Codable where T : NetworkTask {
+        guard let httpUrlResponse = urlResponse as? HTTPURLResponse else {
+            throw NetworkError.urlResponse
         }
+        
+        return try await decode(task, for: httpUrlResponse, with: data)
     }
     
-    private func decodeData<T>(
-        task: T,
-        by statusCode: HTTPStatusCode,
-        with data: Data,
-        completion: @escaping (Result<T.ResponseModel?, NetworkError>) -> ()
-    ) where T : NetworkTask {
+    private func decode<T>(
+        _ task: T,
+        for httpUrlResponse: HTTPURLResponse,
+        with data: Data
+    ) async throws -> Codable where T : NetworkTask {
         let jsonDecoder = DataDecoder(task: task, with: data)
+        let hTTPStatusCode = HTTPStatusCode(httpUrlResponse.statusCode)
         
         do {
-            
-            let json = try jsonDecoder.decode(by: statusCode)
-            completion(.success(json as? T.ResponseModel))
+            return try jsonDecoder.decode(by: hTTPStatusCode) as? T.ResponseModel
             
         } catch {
-            completion(.failure(.decoding))
+            throw NetworkError.decoding
         }
     }
     

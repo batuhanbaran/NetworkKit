@@ -21,15 +21,15 @@ final class DataDecoder<T: NetworkTask>: JSONDecoder {
     
     func decode(
         by status: HTTPStatusCode
-    ) throws -> Decodable {
+    ) throws -> Codable {
         switch status {
         case .ok:
-            return try super.decode(T.ResponseModel.self, from: data)
+            let json = try super.decode(T.ResponseModel.self, from: data)
+            return json
         case .serverError:
-            let json = try super.decode(T.ServerErrorModel.self, from: data)
-            throw NetworkError.serviceError(model: json)
+            throw NetworkError.nonValidStatusCode
         case .unknown:
-            throw NetworkError.decoding
+            throw NetworkError.unknown
         }
     }
 }

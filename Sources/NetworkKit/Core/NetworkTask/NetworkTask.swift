@@ -11,34 +11,36 @@ public protocol NetworkTask {
     
     associatedtype RequestModel: Codable
     associatedtype ResponseModel: Codable
-    associatedtype ServerErrorModel: Codable
     
-    var requestBody: RequestModel { get }
+    var body: Codable? { get }
     var queryItems: [URLQueryItem]? { get }
     var baseUrl: URL { get set }
     var path: String { get set }
+    var timeoutInterval: Double? { get }
     var allHTTPHeaderFields: HTTPHeaders? { get set }
     var httpMethod: HTTPMethod { get set }
-    var timeoutInterval: Double? { get }
 }
 
 public extension NetworkTask {
     var timeoutInterval: Double? { return nil }
     var queryItems: [URLQueryItem]? { return nil }
+    var body: Codable? { return nil }
 }
 
 extension NetworkTask {
     
     func urlRequest() throws -> URLRequest {
-        guard let url = URL(string: path, relativeTo: baseUrl) else { throw NetworkError.url }
+        var urlComponents = URLComponents()
+        urlComponents.scheme           = "https"
+        urlComponents.host             = baseUrl.host
+        urlComponents.path             = path
+        urlComponents.queryItems       = queryItems
+        
+        guard let url = urlComponents.url else { throw NetworkError.url }
         
         var urlRequest = URLRequest(url: url)
-        var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: true)
-        
-        urlComponents?.queryItems      = queryItems
-        urlRequest.url                 = urlComponents?.url
         urlRequest.httpMethod          = httpMethod.rawValue
-        urlRequest.httpBody            = try? DataEncoder(requestBody: requestBody).encode()
+        urlRequest.httpBody            = try? DataEncoder(body: body).encode()
         urlRequest.allHTTPHeaderFields = allHTTPHeaderFields
         urlRequest.timeoutInterval     = timeoutInterval ?? 60.0
         

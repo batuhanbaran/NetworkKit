@@ -9,19 +9,19 @@ import Foundation
 
 final class DataEncoder: JSONEncoder {
     
-    private var requestBody: Codable
+    private var body: Codable?
     
     init(
-        requestBody: Codable
+        body: Codable?
     ) {
-        self.requestBody = requestBody
+        self.body = body
         
         super.init()
     }
     
     func encode() throws -> Data? {
-        guard !(requestBody is EmptyRequestModel) else { return nil }
+        guard let body else { return nil }
         
-        return try super.encode(requestBody.self)
+        return try super.encode(body.self)
     }
 }
